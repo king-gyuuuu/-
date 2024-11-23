@@ -1,0 +1,17 @@
+public class ArraysTest2 {
+    public static void main(String args[]) {
+        int score[] = {88, 97, 53, 62, 92, 68, 82};
+        int max = score[0];
+        
+        for (int i : score) { // 확장된 for문 사용. 변수 i에는 인덱스가 아닌 배열 요소의 값이 순차적으로 배정
+            // 기존 for문: for (int i = 1; i < score.length; i = i + 1)
+            {
+                if (i > max) { // i를 max와 비교
+                    // 기존의 for문을 사용할 때의 if문: if (score[i] > max)
+                    max = i; // max = score[i];
+                }
+            }
+        }
+        System.out.println("배열 요소의 최대값은 " + max + "입니다.");
+    }
+}
