@@ -1,0 +1,14 @@
+int[] id;
+id = new int[3]; // 3개의 int 요소를 가진 배열 생성
+
+또는
+
+int[] id = new int[3];
+String[] student_name;
+student_name = new String[3]; // 3개의 문자열 요소를 가진 배열 생성
+
+또는
+
+String[] student_name = new String[3];
+int[][] id_and_score = new int[5][2]; // 5행과 2열을 가진 정수 2차원 배열
+String add_and_name[][] = new String[10][10]; // 10행과 10열을 가진 문자열 배열
