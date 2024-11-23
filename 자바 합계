@@ -1,0 +1,10 @@
+Scanner stdin = new Scanner(System.in);
+		System.out.println("합계를 원하는 정수 입력 : ");
+		int num = stdin.nextInt();
+		int sum = 0, i;
+		for(i = 1; i>=1; i++) {
+			sum += i;
+			if (i ==num) break;
+		}
+		System.out.println(i+"까지의 합계는 =" + sum);
+		 	
