@@ -1,0 +1,39 @@
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
+int main() {
+    char str[100], ch;
+    int count = 0;
+
+    printf("문자열을 입력하세요: ");
+    fgets(str, sizeof(str), stdin);
+    
+    // 문자열 길이 출력
+    printf("문자열의 길이는: %zu입니다.\n", strlen(str) - 1); // 마지막에 '\n'이 포함될 수 있기 때문에 -1
+
+    // 대소문자 변환
+    for (int i = 0; str[i] != '\0'; i++) {
+        if (isupper(str[i])) {
+            str[i] = tolower(str[i]);
+        } else if (islower(str[i])) {
+            str[i] = toupper(str[i]);
+        }
+    }
+
+    printf("변환된 문자열: %s\n", str);
+
+    // 특정 문자 찾기
+    printf("찾을 문자를 입력하세요: ");
+    scanf("%c", &ch);
+    
+    for (int i = 0; str[i] != '\0'; i++) {
+        if (str[i] == ch) {
+            count++;
+        }
+    }
+
+    printf("문자 '%c'는 %d번 등장합니다.\n", ch, count);
+
+    return 0;
+}
