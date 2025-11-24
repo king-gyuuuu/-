@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>MAZE RPG v4.3 (Fixed Maps for Time Attack)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&display=swap" rel="stylesheet">
+  <style>
+    html, body { 
+      margin: 0; 
+      padding: 0; 
+      height: 100%; 
+      width: 100%; 
+      overflow: hidden; 
+      background: radial-gradient(circle at center, #2c3e50 0%, #000000 100%);
+      font-family: 'Do Hyeon', sans-serif;
+      user-select: none;
+    }
+    #game { 
+      display: block; 
+      height: 100%; 
+      width: 100%; 
+    }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+
+  <script>
+    console.log("Maze Game Loaded - v4.3 Fixed Time Attack Maps");
+
+    // --- Global Variables ---
+    let gameMode = 'endless';
+    let timeLeft = 120;
+    let bgmVolume = 0.5; 
+    let sfxVolume = 1.0;
+    
+    let globalBGM = { key: null, instance: null };
+    let synthInterval = null;
+
+    let playerData = {
+      coins: 0,
+      lives: 3,
+      speedLevel: 0,
+      skin: 0xffffff,
+      ownedSkins: [0xffffff],
+      visionLevel: 0
+    };
+
+    const SKINS = [
+      { name: '기본 화이트', color: 0xffffff, cost: 0, ability: 'none', description: '특별한 능력이 없습니다.', icon: '⚪' },
+      { name: '시원한 블루', color: 0x3498db, cost: 5, ability: 'shield', description: '8초마다 3초간 무적이 됩니다.', icon: '🛡️' },
+      { name: '고급진 퍼플', color: 0x9b59b6, cost: 10, ability: 'coin_boost', description: '코인 획득 시 25% 확률로 +1.', icon: '💰' },
+      { name: '상큼한 옐로', color: 0xf1c40f, cost: 15, ability: 'speed_boost', description: '10초마다 2초간 속도 1.5배.', icon: '⚡' },
+      
+      { name: '나이트 그린', color: 0x2ecc71, cost: 25, ability: 'vision_plus', description: '어둠 속 시야가 30% 넓어집니다.', icon: '👁️' },
+      { name: '타임 레드', color: 0xe74c3c, cost: 30, ability: 'time_bonus', description: '타임어택 시간이 30초 늘어납니다.', icon: '⏰' },
+      { name: '럭키 오렌지', color: 0xe67e22, cost: 40, ability: 'evasion', description: '벽 충돌 시 20% 확률로 생존!', icon: '🍀' },
+      { name: '닌자 블랙', color: 0x34495e, cost: 50, ability: 'ninja', description: '기본 속도가 매우 빠르지만 시야가 좁습니다.', icon: '🥷' },
+
+      { name: '러블리 핑크', color: 0xff7979, cost: 60, ability: 'extra_life', description: '무한 모드 시작 목숨 +1 (총 4개)', icon: '❤️' },
+      { name: '리치 골드', color: 0xf1c40f, cost: 70, ability: 'start_rich', description: '게임 시작 시 5코인을 가지고 시작.', icon: '💎' },
+      { name: '아쿠아 마린', color: 0x1abc9c, cost: 80, ability: 'coin_magnet', description: '코인을 끌어당기는 자석 능력!', icon: '🧲' },
+      { name: '레전드 레인보우', color: 0x8e44ad, cost: 150, ability: 'ultimate', description: '속도+쉴드+코인 모든 능력 발동!', icon: '🌈' }
+    ];
+
+    const SPEED_UPGRADE = { cost: 10, increment: 20 };
+    const BASE_SPEED = 150;
+    const VISION_BASE_RADIUS = 64;
+    const VISION_UPGRADE_INCREMENT = 32;
+    const VISION_UPGRADE_COST = 20;
+
+    // [FIX] 타임어택용 고정 맵 (LEVELS) 복구
+    const LEVELS = [
+      ["#####", "#S.E#", "#####"],
+      ["#########", "#S.C.C.E#", "#.###.###", "#.C.C.C.#", "#########"],
+      ["###########", "#S.C..#..E#", "#.###...###", "#...#.....#", "###########"],
+      ["#############", "#S.C.C.C.C.C.#", "#.#########.#", "#.C.C.C.C.C.E#", "#############"],
+      ["###############","#S.C.C.C.C.C.C.#","#.###########.#","#.C.C.C.C.C.#.#","#############E#","###############"],
+      ["#################","#S.C.C.C.C.C.C.C.#","#.#############.#", "#.#############.#","#.#.C.C.C.C.C.#.#","#.#.###########.#","#C.CE..........#","#################"],
+      ["###################","#S.C.C.C.C.C.C.C.#","#.#############.#","#.###########.#.#","#.###C.C.C###.#.#","#.###.###.###.#.#","#.###.###.E.C.#.#","#.###.#########.#","#C.C.C.C.C.C.C.C#","###################"],
+      ["#####################","#E.C.C.C.C.C.C.C.C.#","#.#################.#","#.#################.#","#.##C.C.C.C.C.C.C.#.#","#.##.############.#.#","#.##.############.#.#","#.##C.C.C.C.C.C.C.#S#","#####################"],
+      ["#######################","#S#C#.#C#.#C#.#C#.#C#C#","#.#.#.#.#.#.#.#.#.#.#.#","#C#.#C#.#C#.#C#.#C#.#E#","#######################"],
+      ["#########################","#S.C.C.C.C.C.C.C.C.C.C.C#","#.#####################.#","#.#####################.#","#.#.C.C.C.C.C.C.C.C.C.#.#","#.#.#################.#.#","#.#.#################.#.#","#.#.#.C.C.C.C.C.C.C.#.#.#","#.#.#.#############.#.#.#","#.#.#.#############.#.#.#","#C.C#C.C.C.C.C.C.C.C#C.CE#","#########################"]
+    ];
+
+    const TILE = 32;
+    let currentLevel = 0;
+
+    // --- Maze Generator (For Endless Mode) ---
+    class MazeGenerator {
+        constructor(level) {
+            const sizeIncrement = Math.min(level * 2, 60); 
+            this.width = 9 + sizeIncrement;
+            this.height = 9 + sizeIncrement;
+            if (this.width % 2 === 0) this.width++;
+            if (this.height % 2 === 0) this.height++;
+            this.map = [];
+        }
+
+        generate() {
+            for (let y = 0; y < this.height; y++) {
+                let row = [];
+                for (let x = 0; x < this.width; x++) { row.push('#'); }
+                this.map.push(row);
+            }
+            const startX = 1; const startY = 1;
+            this.carve(startX, startY);
+            this.map[1][1] = 'S';
+            let exitPlaced = false;
+            for (let y = this.height - 2; y > 0 && !exitPlaced; y--) {
+                for (let x = this.width - 2; x > 0 && !exitPlaced; x--) {
+                    if (this.map[y][x] === '.') { this.map[y][x] = 'E'; exitPlaced = true; }
+                }
+            }
+            let coinCount = Math.floor((this.width * this.height) / 20); 
+            let attempts = 0;
+            while (coinCount > 0 && attempts < 1000) {
+                const rx = Phaser.Math.Between(1, this.width - 2);
+                const ry = Phaser.Math.Between(1, this.height - 2);
+                if (this.map[ry][rx] === '.') { this.map[ry][rx] = 'C'; coinCount--; }
+                attempts++;
+            }
+            return this.map;
+        }
+
+        carve(x, y) {
+            const directions = [{ dx: 0, dy: -2 }, { dx: 0, dy: 2 }, { dx: -2, dy: 0 }, { dx: 2, dy: 0 }];
+            directions.sort(() => Math.random() - 0.5);
+            this.map[y][x] = '.';
+            for (let dir of directions) {
+                const nx = x + dir.dx;
+                const ny = y + dir.dy;
+                if (nx > 0 && nx < this.width - 1 && ny > 0 && ny < this.height - 1 && this.map[ny][nx] === '#') {
+                    this.map[y + dir.dy / 2][x + dir.dx / 2] = '.';
+                    this.carve(nx, ny);
+                }
+            }
+        }
+    }
+
+    // --- Helper: Create Button ---
+    function createButton(scene, x, y, text, style = {}) {
+        const container = scene.add.container(x, y);
+        const bgColor = style.backgroundColor || 0x3498db;
+        const hoverColor = style.hoverColor || Phaser.Display.Color.HexStringToColor('#' + bgColor.toString(16).padStart(6, '0')).lighten(20).color;
+        const textColor = style.color || '#ffffff';
+        const padding = style.padding || { x: 20, y: 12 };
+        const borderRadius = style.borderRadius || 12;
+        const fontSize = style.fontSize || '24px';
+        const shadowOffset = style.shadowOffset || 4;
+
+        const buttonText = scene.add.text(0, 0, text, {
+            fontFamily: 'Do Hyeon', fontSize: fontSize, color: textColor,
+            stroke: style.stroke || '#000000', strokeThickness: style.strokeThickness || 0
+        }).setOrigin(0.5);
+
+        const buttonWidth = buttonText.width + padding.x * 2;
+        const buttonHeight = buttonText.height + padding.y * 2;
+        
+        const shadow = scene.add.graphics();
+        shadow.fillStyle(0x000000, 0.4);
+        shadow.fillRoundedRect(-buttonWidth / 2 + shadowOffset, -buttonHeight / 2 + shadowOffset, buttonWidth, buttonHeight, borderRadius);
+
+        const bg = scene.add.graphics();
+        bg.fillStyle(bgColor, 1);
+        bg.fillRoundedRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, borderRadius);
+        
+        if (style.showBorder !== false) {
+            bg.lineStyle(2, 0xffffff, 0.3);
+            bg.strokeRoundedRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, borderRadius);
+        }
+        
+        container.add([shadow, bg, buttonText]);
+        container.setSize(buttonWidth, buttonHeight);
+        container.setInteractive({ useHandCursor: true });
+
+        container.on('pointerover', () => {
+            scene.tweens.add({ targets: container, scale: 1.05, duration: 100, ease: 'Back.easeOut' });
+            bg.clear(); bg.fillStyle(hoverColor, 1);
+            bg.fillRoundedRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, borderRadius);
+            if (style.showBorder !== false) { bg.lineStyle(2, 0xffffff, 0.5); bg.strokeRoundedRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, borderRadius); }
+        });
+
+        container.on('pointerout', () => {
+            scene.tweens.add({ targets: container, scale: 1, duration: 100, ease: 'Back.easeIn' });
+            bg.clear(); bg.fillStyle(bgColor, 1);
+            bg.fillRoundedRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, borderRadius);
+            if (style.showBorder !== false) { bg.lineStyle(2, 0xffffff, 0.3); bg.strokeRoundedRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, borderRadius); }
+        });
+
+        container.on('pointerdown', () => {
+            scene.tweens.add({ targets: container, scale: 0.95, duration: 50, yoyo: true });
+        });
+        
+        return container;
+    }
+
+    // --- Audio Manager ---
+    function manageBGM(scene, targetMode) {
+        if (synthInterval) { clearInterval(synthInterval); synthInterval = null; }
+        if (scene.sound.locked) scene.sound.unlock();
+
+        let targetKey = '';
+        if (targetMode === 'timeAttack') { targetKey = 'track_miro'; } 
+        else { targetKey = 'track_bgm'; } 
+
+        if (globalBGM.key === targetKey && globalBGM.instance && globalBGM.instance.isPlaying) {
+            globalBGM.instance.setVolume(0.5 * bgmVolume); return; 
+        }
+
+        if (globalBGM.instance) {
+            globalBGM.instance.stop(); globalBGM.instance.destroy(); globalBGM.instance = null; globalBGM.key = null;
+        }
+
+        if (scene.cache.audio.exists(targetKey)) {
+            globalBGM.instance = scene.sound.add(targetKey, { loop: true, volume: 0.5 * bgmVolume });
+            globalBGM.instance.play(); globalBGM.key = targetKey;
+        } else {
+            startSynthBGM(scene, targetKey);
+        }
+    }
+
+    function startSynthBGM(scene, key) {
+        const ctx = scene.sound.context; if (!ctx) return;
+        const notes = key === 'track_bgm' ? [261.63, 329.63, 392.00, 493.88] : [220.00, 261.63, 329.63, 415.30];
+        let idx = 0;
+        synthInterval = setInterval(() => {
+            if (ctx.state === 'suspended' || bgmVolume <= 0) return;
+            const osc = ctx.createOscillator(); const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            const now = ctx.currentTime;
+            osc.frequency.setValueAtTime(notes[idx], now);
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.1 * bgmVolume, now + 0.1);
+            gain.gain.linearRampToValueAtTime(0, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+            idx = (idx + 1) % notes.length;
+        }, 500);
+    }
+
+    // --- Preload Scene ---
+    class PreloadScene extends Phaser.Scene {
+        constructor() { super("PreloadScene"); }
+        preload() {
+            const { width, height } = this.sys.game.config;
+            const progressBar = this.add.graphics(); const progressBox = this.add.graphics();
+            progressBox.fillStyle(0x222222, 0.8); progressBox.fillRect(width/2 - 160, height/2 - 25, 320, 50);
+            const loadingText = this.add.text(width/2, height/2 - 50, '로딩 중...', { fontFamily: 'Do Hyeon', fontSize: '20px', color: '#ffffff' }).setOrigin(0.5);
+            this.load.on('progress', (value) => { progressBar.clear(); progressBar.fillStyle(0x3498db, 1); progressBar.fillRect(width/2 - 150, height/2 - 15, 300 * value, 30); });
+            this.load.on('complete', () => { progressBar.destroy(); progressBox.destroy(); loadingText.destroy(); });
+            
+            this.load.audio('track_bgm', 'assets/bgm.mp3');           
+            this.load.audio('track_miro', 'assets/미로 속에서.mp3');  
+        }
+        create() { this.scene.start('MainMenuScene'); }
+    }
+
+    // --- Main Menu ---
+    class MainMenuScene extends Phaser.Scene {
+        constructor() { super("MainMenuScene"); }
+        preload() {
+            const particleGraphics = this.make.graphics({fillStyle: {color: 0x66d9ff}});
+            particleGraphics.fillCircle(4, 4, 4);
+            particleGraphics.generateTexture('particle', 8, 8);
+        }
+        create() {
+            manageBGM(this, 'menu');
+
+            const { width, height } = this.sys.game.config; const centerX = width / 2, centerY = height / 2;
+            
+            const bg = this.add.graphics();
+            bg.fillGradientStyle(0x2c3e50, 0x2c3e50, 0x000000, 0x000000, 1, 1, 1, 1); 
+            bg.fillCircle(centerX, centerY, Math.max(width, height));
+            
+            this.particles = this.add.group({
+                key: 'particle', frameQuantity: 100,
+                createCallback: (p) => {
+                    p.x = Math.random() * width; p.y = Math.random() * height;
+                    p.speedY = Math.random() * 0.8 + 0.3; p.speedX = (Math.random() - 0.5) * 0.5;
+                    p.setAlpha(Math.random() * 0.5 + 0.1); p.setScale(Math.random() * 0.8 + 0.4);
+                    p.setBlendMode(Phaser.BlendModes.ADD);
+                }
+            });
+            
+            const title = this.add.text(centerX, centerY - 180, '미로 RPG', { fontFamily: 'Do Hyeon', fontSize: '96px', color: '#ffffff', stroke: '#667eea', strokeThickness: 8, shadow: { offsetX: 0, offsetY: 0, color: '#667eea', blur: 20, fill: true } }).setOrigin(0.5);
+            this.tweens.add({ targets: title, scale: 1.05, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+            this.add.text(centerX, centerY - 100, '모험을 시작하세요!', { fontFamily: 'Do Hyeon', fontSize: '24px', color: '#ecf0f1', alpha: 0.8 }).setOrigin(0.5);
+
+            const endlessButton = createButton(this, centerX, centerY + 20, '🎮 무한 모드', { fontSize: '36px', backgroundColor: 0x2ecc71, hoverColor: 0x27ae60, padding: { x: 30, y: 15 } });
+            endlessButton.on('pointerdown', () => this.startGame('endless'));
+
+            const timeAttackButton = createButton(this, centerX, centerY + 110, '⏱️ 타임 어택', { fontSize: '36px', backgroundColor: 0xe74c3c, hoverColor: 0xc0392b, padding: { x: 30, y: 15 } });
+            timeAttackButton.on('pointerdown', () => this.startGame('timeAttack'));
+
+            const howToPlayButton = createButton(this, centerX, centerY + 200, '❓ 게임 방법', { fontSize: '32px', backgroundColor: 0x3498db, hoverColor: 0x2980b9, padding: { x: 25, y: 12 } });
+            howToPlayButton.on('pointerdown', () => this.showHowToPlay());
+            this.add.text(centerX, height - 30, 'v4.3 | Time Attack Maps Fixed', { fontFamily: 'Do Hyeon', fontSize: '16px', color: '#95a5a6', alpha: 0.6 }).setOrigin(0.5);
+            this.input.once('pointerdown', () => { if (this.sound.context.state === 'suspended') this.sound.context.resume(); });
+        }
+
+        startGame(mode) {
+            gameMode = mode;
+            const currentSkin = SKINS.find(s => s.color === playerData.skin) || SKINS[0];
+            if (mode === 'timeAttack') {
+                timeLeft = 120;
+                if (currentSkin.ability === 'time_bonus' || currentSkin.ability === 'ultimate') { timeLeft += 30; }
+            }
+            if (mode === 'endless') {
+                playerData.lives = 3;
+                if (currentSkin.ability === 'extra_life' || currentSkin.ability === 'ultimate') { playerData.lives = 4; }
+            }
+            currentLevel = 0;
+            this.cameras.main.fadeOut(300, 0, 0, 0);
+            this.time.delayedCall(300, () => { this.scene.stop('UIScene'); this.scene.start('GameScene'); });
+        }
+        
+        showHowToPlay() {
+            const { width, height } = this.sys.game.config; const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.8).setOrigin(0); const centerX = width / 2, centerY = height / 2;
+            const panel = this.add.graphics(); panel.fillStyle(0x2c3e50, 1); panel.lineStyle(3, 0x3498db, 1); panel.fillRoundedRect(centerX - 300, centerY - 250, 600, 500, 20); panel.strokeRoundedRect(centerX - 300, centerY - 250, 600, 500, 20);
+            const title = this.add.text(centerX, centerY - 200, '🎮 게임 방법', { fontFamily: 'Do Hyeon', fontSize: '40px', color: '#ecf0f1' }).setOrigin(0.5);
+            const instructions = [
+                '🎯 목표: 출구(녹색)에 도달하세요!', '', '🕹️ 조작법: 화살표 키 또는 W,A,S,D', '',
+                '❤️ 무한 모드: 하트 3개로 최대한 멀리!', '⏱️ 타임 어택: 제한시간 내 클리어', '',
+                '🔴 주의: 레벨 20부터 움직이는 장애물 등장!'
+            ];
+            let yPos = centerY - 140; instructions.forEach(line => { this.add.text(centerX - 250, yPos, line, { fontFamily: 'Do Hyeon', fontSize: '18px', color: '#ecf0f1', lineSpacing: 5 }); yPos += 30; });
+            const closeButton = createButton(this, centerX, centerY + 210, '닫기', { fontSize: '28px', backgroundColor: 0x27ae60 });
+            closeButton.on('pointerdown', () => { overlay.destroy(); panel.destroy(); title.destroy(); this.scene.restart(); });
+        }
+        update() {
+            if (!this.particles) return;
+            this.particles.children.iterate((p) => {
+                p.y -= p.speedY; p.x += p.speedX; 
+                if (p.y < -20) { p.y = this.sys.game.config.height + 20; p.x = Math.random() * this.sys.game.config.width; }
+                if (p.x < -20) p.x = this.sys.game.config.width + 20;
+                if (p.x > this.sys.game.config.width + 20) p.x = -20;
+            });
+        }
+    }
+
+    // --- Game Scene ---
+    class GameScene extends Phaser.Scene {
+        constructor() { super("GameScene"); }
+
+        create() {
+            manageBGM(this, gameMode);
+            
+            const { width, height } = this.sys.game.config;
+            
+            const levelText = this.add.text(width / 2, height / 2, `Level ${currentLevel + 1}`, { 
+                fontFamily: 'Do Hyeon', fontSize: '48px', color: '#ffffff',
+                stroke: '#000000', strokeThickness: 6
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2).setScale(0);
+            
+            this.tweens.add({ targets: levelText, scale: 1.2, duration: 300, ease: 'Back.easeOut' });
+            this.tweens.add({ targets: levelText, alpha: 0, scale: 0.8, duration: 1000, delay: 1000, ease: 'Power2', onComplete: () => { levelText.destroy(); } });
+
+            this.isPlayerLocked = false;
+            this.isInvincible = false;
+            this.shieldTimer = null;
+            this.speedBoostTimer = null;
+            this.speedBoostMultiplier = 1.0;
+
+            const currentSkin = SKINS.find(s => s.color === playerData.skin) || SKINS[0];
+            if (currentSkin.ability === 'ninja') { this.speedBoostMultiplier = 1.3; }
+            else if (currentSkin.ability === 'start_rich' && currentLevel === 0 && !this.richBonusGiven) {
+                playerData.coins += 5; this.richBonusGiven = true;
+            }
+
+            // [FIX] Map Generation Strategy
+            let mapData;
+            if (gameMode === 'timeAttack') {
+                // 타임 어택은 고정 맵 사용 (루프)
+                const levelIndex = currentLevel % LEVELS.length;
+                mapData = LEVELS[levelIndex];
+            } else {
+                // 무한 모드는 랜덤 생성
+                this.generator = new MazeGenerator(currentLevel);
+                mapData = this.generator.generate();
+            }
+            
+            this.makeLevel(mapData);
+
+            this.cursors = this.input.keyboard.createCursorKeys();
+            this.keys = this.input.keyboard.addKeys("W,A,S,D");
+            this.cameras.main.startFollow(this.player).setBounds(0, 0, this.cols * TILE, this.rows * TILE).setZoom(2);
+            this.scene.launch('UIScene');
+
+            if (gameMode === 'endless') {
+                this.fog = this.add.rectangle(0, 0, this.cols * TILE, this.rows * TILE, 0x000000, 1).setOrigin(0,0).setDepth(1);
+                this.vision = this.make.graphics();
+                this.vision.setVisible(false);
+                this.fog.mask = new Phaser.Display.Masks.GeometryMask(this, this.vision);
+                this.fog.mask.invertAlpha = true;
+            }
+            this.setupAbility();
+            this.cameras.main.fadeIn(300, 0, 0, 0);
+        }
+
+        makeLevel(levelMap) {
+            this.rows = levelMap.length; this.cols = levelMap[0].length;
+            this.cameras.main.setBackgroundColor("#0a0a0a");
+            this.walls = this.physics.add.staticGroup(); 
+            this.exits = this.physics.add.staticGroup(); 
+            this.coins = this.physics.add.group();
+            this.enemies = this.physics.add.group({
+                bounceX: 1,
+                bounceY: 1,
+                collideWorldBounds: true
+            });
+
+            let startPos = { x: 1, y: 1 };
+            for (let y = 0; y < this.rows; y++) { 
+                for (let x = 0; x < this.cols; x++) {
+                    const ch = levelMap[y][x], px = x * TILE + TILE / 2, py = y * TILE + TILE / 2;
+                    if (ch === "#") { 
+                        const wall = this.add.rectangle(px, py, TILE, TILE, 0x3498db); 
+                        wall.setStrokeStyle(1, 0x2980b9, 0.5); 
+                        this.physics.add.existing(wall, true); 
+                        this.walls.add(wall); 
+                    }
+                    else if (ch === "S") { startPos = { x, y }; }
+                    else if (ch === "E") { 
+                        const exit = this.add.rectangle(px, py, TILE, TILE, 0x2ecc71); 
+                        exit.setStrokeStyle(2, 0x27ae60, 0.8); 
+                        this.physics.add.existing(exit, true); 
+                        this.exits.add(exit); 
+                        this.tweens.add({ targets: exit, alpha: 0.6, duration: 1000, yoyo: true, repeat: -1 }); 
+                    }
+                    else if (ch === "C") { 
+                        const coin = this.add.circle(px, py, TILE / 4, 0xf1c40f); 
+                        coin.setStrokeStyle(2, 0xf39c12, 1); 
+                        this.physics.add.existing(coin); 
+                        this.coins.add(coin); 
+                        this.tweens.add({ targets: coin, scaleX: 0.8, duration: 800, yoyo: true, repeat: -1 }); 
+                    }
+                    else if (ch === '.') {
+                        if (currentLevel >= 19 && (x > 5 || y > 5)) {
+                            const spawnChance = 0.02 + (currentLevel * 0.001);
+                            if (Math.random() < spawnChance) {
+                                const enemy = this.add.circle(px, py, TILE / 3, 0xe74c3c);
+                                enemy.setStrokeStyle(2, 0xc0392b, 1);
+                                this.physics.add.existing(enemy);
+                                this.enemies.add(enemy);
+                                const speed = 60;
+                                enemy.body.setVelocity(Phaser.Math.Between(-speed, speed), Phaser.Math.Between(-speed, speed));
+                            }
+                        }
+                    }
+                }
+            }
+            const playerX = startPos.x * TILE + TILE / 2, playerY = startPos.y * TILE + TILE / 2;
+            const currentSkin = SKINS.find(s => s.color === playerData.skin) || SKINS[0];
+            this.player = this.add.rectangle(playerX, playerY, TILE * 0.8, TILE * 0.8, currentSkin.color);
+            this.player.setStrokeStyle(2, 0xffffff, 0.6);
+            this.physics.add.existing(this.player);
+            this.player.body.setCollideWorldBounds(true);
+            
+            this.physics.add.collider(this.player, this.walls, this.handleWallCollision, null, this);
+            this.physics.add.collider(this.enemies, this.walls);
+            this.physics.add.overlap(this.player, this.enemies, this.handleWallCollision, null, this);
+
+            this.physics.add.overlap(this.player, this.exits, this.showClearScreen, null, this);
+            this.physics.add.overlap(this.player, this.coins, this.collectCoin, null, this);
+        }
+
+        setupAbility() {
+            if (this.shieldTimer) { this.shieldTimer.destroy(); this.shieldTimer = null; }
+            if (this.speedBoostTimer) { this.speedBoostTimer.destroy(); this.speedBoostTimer = null; }
+            this.isInvincible = false; 
+            const currentSkin = SKINS.find(s => s.color === playerData.skin) || SKINS[0];
+            if (currentSkin.ability !== 'ninja') this.speedBoostMultiplier = 1.0;
+            this.player.setAlpha(1.0);
+            if (currentSkin.ability === 'shield' || currentSkin.ability === 'ultimate') { this.shieldTimer = this.time.addEvent({ delay: 8000, loop: true, callback: this.activateShield, callbackScope: this }); }
+            if (currentSkin.ability === 'speed_boost' || currentSkin.ability === 'ultimate') { this.speedBoostTimer = this.time.addEvent({ delay: 10000, loop: true, callback: this.activateSpeedBoost, callbackScope: this }); }
+        }
+        
+        activateShield() {
+            if (this.isPlayerLocked || !this.player.body.enable) return;
+            this.isInvincible = true;
+            this.tweens.add({ targets: this.player, alpha: 0.4, duration: 200, yoyo: true, repeat: 7, onComplete: () => { this.isInvincible = false; this.player.setAlpha(1.0); } });
+        }
+        
+        activateSpeedBoost() {
+            if (this.isPlayerLocked || !this.player.body.enable) return;
+            this.speedBoostMultiplier = 1.5;
+            this.tweens.add({ targets: this.player, tint: 0xffff00, duration: 150, yoyo: true, repeat: 6, onComplete: () => { this.speedBoostMultiplier = 1.0; this.player.clearTint(); } });
+            this.time.delayedCall(2000, () => { this.speedBoostMultiplier = 1.0; this.player.clearTint(); });
+        }
+        
+        handleWallCollision() { 
+            if (this.isInvincible) return; 
+            const currentSkin = SKINS.find(s => s.color === playerData.skin) || SKINS[0];
+            if (currentSkin.ability === 'evasion' && Math.random() < 0.2) {
+                this.cameras.main.shake(100, 0.005);
+                const dodgeText = this.add.text(this.player.x, this.player.y - 20, 'MISS!', { fontFamily: 'Do Hyeon', fontSize: '14px', color: '#2ecc71' }).setOrigin(0.5);
+                this.tweens.add({ targets: dodgeText, y: this.player.y - 40, alpha: 0, duration: 500, onComplete: () => dodgeText.destroy() });
+                return; 
+            }
+            this.restartLevel(); 
+        }
+        
+        restartLevel() {
+            if (gameMode === 'endless') {
+                playerData.lives--;
+                this.events.emit('updateUI');
+                if (playerData.lives <= 0) {
+                    this.playSFX(150, 'sawtooth'); this.isPlayerLocked = true; this.player.body.setEnable(false);
+                    this.cameras.main.shake(400, 0.03); this.events.emit('gameOver'); return;
+                }
+            }
+            if (this.shieldTimer) this.shieldTimer.destroy(); if (this.speedBoostTimer) this.speedBoostTimer.destroy();
+            this.playSFX(220, 'triangle'); this.player.body.setEnable(false);
+            this.cameras.main.shake(200, 0.01);
+            this.cameras.main.fadeOut(250, 255, 0, 0).once('camerafadeoutcomplete', () => this.scene.restart());
+        }
+
+        update() {
+            if (this.isPlayerLocked || !this.player.body.enable) { this.player.body.setVelocity(0); return; }
+            const speed = (BASE_SPEED + (playerData.speedLevel * SPEED_UPGRADE.increment)) * this.speedBoostMultiplier;
+            let vx = 0, vy = 0;
+            if (this.cursors.left.isDown || this.keys.A.isDown) vx = -speed; else if (this.cursors.right.isDown || this.keys.D.isDown) vx = speed;
+            if (this.cursors.up.isDown || this.keys.W.isDown) vy = -speed; else if (this.cursors.down.isDown || this.keys.S.isDown) vy = speed;
+            this.player.body.setVelocity(vx, vy); if (vx && vy) this.player.body.velocity.normalize().scale(speed);
+
+            if (gameMode === 'endless' && this.vision) {
+                let visionRadius = VISION_BASE_RADIUS + (playerData.visionLevel * VISION_UPGRADE_INCREMENT);
+                const currentSkin = SKINS.find(s => s.color === playerData.skin) || SKINS[0];
+                if (currentSkin.ability === 'vision_plus' || currentSkin.ability === 'ultimate') { visionRadius *= 1.3; }
+                else if (currentSkin.ability === 'ninja') { visionRadius *= 0.7; }
+                this.vision.clear(); this.vision.fillStyle(0xffffff); this.vision.fillCircle(this.player.x, this.player.y, visionRadius);
+            }
+        }
+
+        collectCoin(player, coin) {
+            coin.body.setEnable(false);
+            const currentSkin = SKINS.find(s => s.color === playerData.skin) || SKINS[0];
+            let coinAmount = 1;
+            if ((currentSkin.ability === 'coin_boost' || currentSkin.ability === 'ultimate') && Math.random() < 0.25) { 
+                coinAmount = 2; 
+                const bonusText = this.add.text(coin.x, coin.y - 20, '+1 BONUS!', { fontFamily: 'Do Hyeon', fontSize: '16px', color: '#f1c40f', stroke: '#000000', strokeThickness: 3 }).setScrollFactor(1);
+                this.tweens.add({ targets: bonusText, y: coin.y - 40, alpha: 0, duration: 1000, onComplete: () => bonusText.destroy() });
+            }
+            if (currentSkin.ability === 'coin_magnet' && Math.random() < 0.1) { coinAmount = 3; }
+            playerData.coins += coinAmount;
+            this.tweens.add({ targets: coin, scaleX: 1.5, scaleY: 1.5, alpha: 0, duration: 200, onComplete: () => coin.destroy() });
+            this.playSFX(880, 'sine', true); this.events.emit('updateUI');
+        }
+
+        showClearScreen() { 
+            this.playSFX(523.25, 'sine', false, true);
+            this.player.body.setEnable(false); this.cameras.main.flash(300, 46, 204, 113); this.events.emit('showClearScreen'); 
+        }
+        
+        playSFX(freq, type, rampUp = false, success = false) {
+            const ctx = this.sound.context; if (!ctx) return; if (ctx.state === 'suspended') ctx.resume();
+            const osc = ctx.createOscillator(); const gain = ctx.createGain();
+            osc.type = type; osc.connect(gain); gain.connect(ctx.destination);
+            const now = ctx.currentTime; 
+            const volume = 0.15 * sfxVolume; 
+            gain.gain.setValueAtTime(volume, now); osc.frequency.setValueAtTime(freq, now);
+            if (rampUp) { osc.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15); osc.start(now); osc.stop(now + 0.15); }
+            else if (success) { osc.frequency.setValueAtTime(523.25, now); osc.frequency.setValueAtTime(659.25, now + 0.1); osc.frequency.setValueAtTime(783.99, now + 0.2); osc.start(now); osc.stop(now + 0.3); }
+            else { osc.frequency.exponentialRampToValueAtTime(50, now + 0.2); gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
+        }
+    }
+
+    // --- UI Scene ---
+    class UIScene extends Phaser.Scene {
+        constructor() { super("UIScene"); }
+        create() {
+            this.gameScene = this.scene.get('GameScene');
+            const { width, height } = this.sys.game.config;
+            this.settingsContainer = null; this.shopContainer = null;
+            this.currentShopPage = 0;
+
+            const coinBg = this.add.graphics(); coinBg.fillStyle(0x000000, 0.7); coinBg.fillRoundedRect(15, 15, 160, 50, 10); coinBg.lineStyle(2, 0xf1c40f, 0.8); coinBg.strokeRoundedRect(15, 15, 160, 50, 10);
+            this.coinText = this.add.text(95, 40, `💰 ${playerData.coins}`, { fontFamily: 'Do Hyeon', fontSize: "28px", color: "#f1c40f", stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5);
+            
+            if (gameMode === 'endless') {
+                const heartBg = this.add.graphics(); heartBg.fillStyle(0x000000, 0.7); heartBg.fillRoundedRect(190, 15, 140, 50, 10); heartBg.lineStyle(2, 0xe74c3c, 0.8); heartBg.strokeRoundedRect(190, 15, 140, 50, 10);
+                this.heartsText = this.add.text(260, 40, this.getHeartsString(playerData.lives), { fontFamily: 'Do Hyeon', fontSize: "28px", color: "#e74c3c", stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5);
+            }
+
+            const settingsButton = createButton(this, width - 50, 40, '⚙️', { fontSize: "32px", color: "#ffffff", backgroundColor: 0x34495e, hoverColor: 0x2c3e50, padding: {x: 12, y: 8}, borderRadius: 10 });
+            settingsButton.on('pointerdown', () => this.showSettings());
+
+            if (gameMode === 'endless') {
+                const shopButton = createButton(this, width - 150, 40, '🛒', { fontSize: "32px", backgroundColor: 0x9b59b6, hoverColor: 0x8e44ad, padding: {x: 12, y: 8}, borderRadius: 10 });
+                shopButton.on('pointerdown', () => this.showShop());
+            } else if (gameMode === 'timeAttack') {
+                const timerBg = this.add.graphics(); timerBg.fillStyle(0x000000, 0.7); timerBg.fillRoundedRect(width - 270, 15, 160, 50, 10); timerBg.lineStyle(2, 0xe74c3c, 0.8); timerBg.strokeRoundedRect(width - 270, 15, 160, 50, 10);
+                this.timerText = this.add.text(width - 190, 40, `⏱️ ${timeLeft}s`, { fontFamily: 'Do Hyeon', fontSize: "28px", color: "#e74c3c", stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5);
+                this.timerEvent = this.time.addEvent({ delay: 1000, callback: this.updateTimer, callbackScope: this, loop: true });
+            }
+            
+            this.gameScene.events.on('updateUI', () => { 
+                this.coinText.setText(`💰 ${playerData.coins}`); 
+                this.tweens.add({ targets: this.coinText, scale: 1.2, duration: 100, yoyo: true });
+                if (this.heartsText) this.heartsText.setText(this.getHeartsString(playerData.lives));
+            });
+            this.gameScene.events.on('showClearScreen', () => this.showClearScreen());
+            this.gameScene.events.on('gameOver', () => this.showGameOverScreen());
+        }
+
+        getHeartsString(lives) {
+            let s = ''; for(let i=0; i<lives; i++) s += '❤️'; return s;
+        }
+        
+        updateTimer() {
+            timeLeft--; this.timerText.setText(`⏱️ ${timeLeft}s`);
+            if (timeLeft <= 10 && timeLeft > 0) { this.tweens.add({ targets: this.timerText, scale: 1.15, duration: 200, yoyo: true }); }
+            if (timeLeft <= 0) { if(this.timerEvent) this.timerEvent.remove(); this.gameScene.isPlayerLocked = true; this.gameScene.player.body.setEnable(false); this.showTimesUpScreen(); }
+        }
+        
+        goToMainMenu() {
+            this.cameras.main.fadeOut(300, 0, 0, 0);
+            this.time.delayedCall(300, () => { this.scene.stop('GameScene'); this.scene.stop('UIScene'); this.scene.start('MainMenuScene'); });
+        }
+
+        showGameOverScreen() {
+            const { width, height } = this.sys.game.config; const centerX = width / 2, centerY = height / 2;
+            this.add.rectangle(0, 0, width, height, 0x000000, 0.85).setOrigin(0);
+            const bg = this.add.graphics(); bg.fillStyle(0x2c3e50, 1); bg.lineStyle(4, 0xe74c3c, 1); bg.fillRoundedRect(centerX - 280, centerY - 180, 560, 360, 20); bg.strokeRoundedRect(centerX - 280, centerY - 180, 560, 360, 20);
+            this.add.text(centerX, centerY - 100, "💀 게임 오버", { fontFamily: 'Do Hyeon', fontSize: "56px", color: "#e74c3c", stroke: '#000000', strokeThickness: 6 }).setOrigin(0.5);
+            this.add.text(centerX, centerY, `도달 레벨: ${currentLevel + 1}`, { fontFamily: 'Do Hyeon', fontSize: '36px', color: '#ecf0f1' }).setOrigin(0.5);
+            const restartButton = createButton(this, centerX, centerY + 120, "🔄 처음부터 다시", { fontSize: "28px", backgroundColor: 0xe74c3c });
+            restartButton.on("pointerdown", () => this.goToMainMenu());
+        }
+
+        showTimesUpScreen() {
+            const { width, height } = this.sys.game.config; const centerX = width / 2, centerY = height / 2;
+            this.add.rectangle(0, 0, width, height, 0x000000, 0.85).setOrigin(0);
+            const bg = this.add.graphics(); bg.fillStyle(0x2c3e50, 1); bg.lineStyle(4, 0xe74c3c, 1); bg.fillRoundedRect(centerX - 280, centerY - 180, 560, 360, 20); bg.strokeRoundedRect(centerX - 280, centerY - 180, 560, 360, 20);
+            this.add.text(centerX, centerY - 100, "⏰ 타임 오버!", { fontFamily: 'Do Hyeon', fontSize: "56px", color: "#e74c3c", stroke: '#000000', strokeThickness: 6 }).setOrigin(0.5);
+            this.add.text(centerX, centerY, `최종 단계: ${currentLevel + 1}`, { fontFamily: 'Do Hyeon', fontSize: "36px", color: "#ecf0f1", stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
+            const menuButton = createButton(this, centerX, centerY + 120, "🏠 메인 메뉴로", { fontSize: "28px", backgroundColor: 0x3498db, hoverColor: 0x2980b9, padding: { x: 25, y: 12 } });
+            menuButton.on("pointerdown", () => this.goToMainMenu());
+        }
+        
+        showSettings() {
+            if (this.settingsContainer || this.shopContainer) return;
+            this.gameScene.isPlayerLocked = true;
+            const { width, height } = this.sys.game.config; const centerX = width / 2, centerY = height / 2;
+            this.settingsContainer = this.add.container(centerX, centerY);
+            const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0.5).setInteractive();
+            const bg = this.add.graphics(); bg.fillStyle(0x2c3e50, 1); bg.lineStyle(3, 0x3498db, 1); bg.fillRoundedRect(-320, -220, 640, 440, 20); bg.strokeRoundedRect(-320, -220, 640, 440, 20);
+            const title = this.add.text(0, -170, '⚙️ 설정', { fontFamily: 'Do Hyeon', fontSize: '40px', color: '#ecf0f1' }).setOrigin(0.5);
+            const closeButton = createButton(this, 280, -180, '✕', { fontSize: '28px', backgroundColor: 0xe74c3c, hoverColor: 0xc0392b, padding: {x: 12, y: 6}, borderRadius: 20 });
+            closeButton.on('pointerdown', () => { this.gameScene.isPlayerLocked = false; if(this.settingsContainer) { this.settingsContainer.destroy(); this.settingsContainer = null; } overlay.destroy(); });
+            this.settingsContainer.add([overlay, bg, title, closeButton]);
+            
+            let yPos = -100;
+            const createSlider = (y, label, initialValue, color, callback) => {
+                const labelText = this.add.text(-280, y, label, { fontFamily: 'Do Hyeon', fontSize: '24px', color: '#ecf0f1' }).setOrigin(0, 0.5);
+                const volText = this.add.text(260, y, `${Math.round(initialValue * 100)}%`, { fontFamily: 'Do Hyeon', fontSize: '24px', color: color }).setOrigin(1, 0.5);
+                const barCenter = 30; 
+                const barWidth = 220;
+                const barLeft = barCenter - (barWidth / 2);
+                const barBg = this.add.rectangle(barCenter, y, barWidth, 12, 0x34495e).setOrigin(0.5);
+                const bar = this.add.rectangle(barLeft, y, initialValue * barWidth, 12, color).setOrigin(0, 0.5);
+                const handle = this.add.circle(barLeft + initialValue * barWidth, y, 14, 0xecf0f1).setOrigin(0.5).setStrokeStyle(3, color, 1).setInteractive({ useHandCursor: true, draggable: true });
+                
+                const updateVal = (dragX) => { 
+                    const ratio = Phaser.Math.Clamp((dragX - barLeft) / barWidth, 0, 1); 
+                    handle.x = barLeft + ratio * barWidth; 
+                    bar.width = ratio * barWidth; 
+                    volText.setText(`${Math.round(ratio * 100)}%`); 
+                    callback(ratio); 
+                };
+                handle.on('drag', (p, x) => updateVal(x));
+                this.settingsContainer.add([labelText, volText, barBg, bar, handle]);
+            };
+
+            createSlider(yPos, '🔊 배경음', bgmVolume, 0x3498db, (val) => { 
+                bgmVolume = val; 
+                if (globalBGM.instance) globalBGM.instance.setVolume(0.5 * bgmVolume);
+            });
+            yPos += 80;
+            createSlider(yPos, '🎵 효과음', sfxVolume, 0xf39c12, (val) => { sfxVolume = val; });
+            yPos += 140;
+            const homeButton = createButton(this, 0, yPos, '🏠 메인 메뉴로', { fontSize: '28px', backgroundColor: 0x3498db, hoverColor: 0x2980b9, padding: { x: 25, y: 12 } });
+            homeButton.on('pointerdown', () => this.goToMainMenu());
+            this.settingsContainer.add(homeButton);
+        }
+
+        showShop() {
+            if (this.shopContainer) return;
+            this.gameScene.isPlayerLocked = true;
+            this.currentShopPage = 0;
+            const { width, height } = this.sys.game.config;
+            this.shopContainer = this.add.container(width/2, height/2);
+            
+            const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0.5).setInteractive();
+            const bg = this.add.graphics(); bg.fillStyle(0x2c3e50, 1); bg.lineStyle(3, 0x9b59b6, 1); bg.fillRoundedRect(-360, -280, 720, 560, 20); bg.strokeRoundedRect(-360, -280, 720, 560, 20);
+            const title = this.add.text(0, -230, '🛒 상점', { fontFamily: 'Do Hyeon', fontSize: '44px', color: '#ecf0f1' }).setOrigin(0.5);
+            const closeButton = createButton(this, 320, -240, '✕', { fontSize: '28px', backgroundColor: 0xe74c3c, hoverColor: 0xc0392b, padding: {x: 12, y: 6}, borderRadius: 20 });
+            closeButton.on('pointerdown', () => { this.gameScene.isPlayerLocked = false; if (this.shopContainer) { this.shopContainer.destroy(); this.shopContainer = null; } overlay.destroy(); });
+            
+            const prevBtn = createButton(this, -300, 230, '⬅️', { fontSize: '24px', backgroundColor: 0x34495e });
+            const nextBtn = createButton(this, 300, 230, '➡️', { fontSize: '24px', backgroundColor: 0x34495e });
+            const pageText = this.add.text(0, 230, '1 / 3', { fontFamily: 'Do Hyeon', fontSize: '24px', color: '#ecf0f1' }).setOrigin(0.5);
+            
+            this.shopItemsContainer = this.add.container(0, 0);
+            this.shopContainer.add([overlay, bg, title, closeButton, prevBtn, nextBtn, pageText, this.shopItemsContainer]);
+            
+            const renderPage = (page) => {
+                this.shopItemsContainer.removeAll(true);
+                const itemsPerPage = 4;
+                const start = page * itemsPerPage;
+                const end = Math.min(start + itemsPerPage, SKINS.length);
+                let yPos = -160;
+                for (let i = start; i < end; i++) {
+                    const skin = SKINS[i];
+                    const skinContainer = this.add.container(0, yPos);
+                    const skinBg = this.add.graphics(); skinBg.fillStyle(0x34495e, 0.5); skinBg.fillRoundedRect(-330, -30, 660, 75, 12);
+                    const skinIcon = this.add.text(-300, 0, skin.icon, { fontSize: '36px' }).setOrigin(0.5);
+                    const skinColorBox = this.add.rectangle(-250, 0, 40, 40, skin.color).setStrokeStyle(2, 0xecf0f1, 1);
+                    const skinText = this.add.text(-210, -10, skin.name, { fontFamily: 'Do Hyeon', fontSize: '22px', color: '#ecf0f1' }).setOrigin(0, 0.5);
+                    const skinDesc = this.add.text(-210, 14, skin.description, { fontFamily: 'Do Hyeon', fontSize: '15px', color: '#95a5a6' }).setOrigin(0, 0.5);
+                    skinContainer.add([skinBg, skinIcon, skinColorBox, skinText, skinDesc]);
+                    
+                    const isOwned = playerData.ownedSkins.includes(skin.color);
+                    const isSelected = playerData.skin === skin.color;
+                    let button; const btnX = 250;
+                    
+                    if (isSelected) { button = createButton(this, btnX, yPos, '✓ 선택됨', { fontSize: '18px', color: '#95a5a6', backgroundColor: 0x7f8c8d, showBorder: false }); }
+                    else if (isOwned) { button = createButton(this, btnX, yPos, '변경', { fontSize: '18px', backgroundColor: 0xf39c12 }); button.on('pointerdown', () => { playerData.skin = skin.color; this.gameScene.player.setFillStyle(playerData.skin); this.gameScene.setupAbility(); renderPage(this.currentShopPage); }); }
+                    else { button = createButton(this, btnX, yPos, `구매 ${skin.cost}💰`, { fontSize: '18px', backgroundColor: 0x2ecc71 }); button.on('pointerdown', () => { if (playerData.coins >= skin.cost) { playerData.coins -= skin.cost; playerData.ownedSkins.push(skin.color); playerData.skin = skin.color; this.gameScene.player.setFillStyle(playerData.skin); this.gameScene.setupAbility(); this.coinText.setText(`💰 ${playerData.coins}`); renderPage(this.currentShopPage); } }); }
+                    this.shopItemsContainer.add([skinContainer, button]);
+                    yPos += 85;
+                }
+                
+                pageText.setText(`${page + 1} / ${Math.ceil(SKINS.length / itemsPerPage)}`);
+            };
+
+            renderPage(0);
+
+            prevBtn.on('pointerdown', () => {
+                if (this.currentShopPage > 0) {
+                    this.currentShopPage--;
+                    renderPage(this.currentShopPage);
+                }
+            });
+            nextBtn.on('pointerdown', () => {
+                if (this.currentShopPage < Math.ceil(SKINS.length / 4) - 1) {
+                    this.currentShopPage++;
+                    renderPage(this.currentShopPage);
+                }
+            });
+        }
+
+        showClearScreen() {
+            const { width, height } = this.sys.game.config; const centerX = width / 2, centerY = height / 2;
+            this.add.rectangle(0, 0, width, height, 0x000000, 0.8).setOrigin(0);
+            const bg = this.add.graphics(); bg.fillStyle(0x2c3e50, 1); bg.lineStyle(4, 0x2ecc71, 1); bg.fillRoundedRect(centerX - 250, centerY - 180, 500, 360, 20); bg.strokeRoundedRect(centerX - 250, centerY - 180, 500, 360, 20);
+            const title = this.add.text(centerX, centerY - 100, "🎉 클리어!", { fontFamily: 'Do Hyeon', fontSize: "56px", color: "#2ecc71", stroke: '#000000', strokeThickness: 6 }).setOrigin(0.5).setScale(0);
+            this.tweens.add({ targets: title, scale: 1.2, duration: 500, ease: 'Elastic.easeOut' });
+            this.add.text(centerX, centerY - 20, `레벨 ${currentLevel + 1} 완료!`, { fontFamily: 'Do Hyeon', fontSize: '28px', color: '#ecf0f1' }).setOrigin(0.5);
+            const nextBtn = createButton(this, centerX + 100, centerY + 80, "➡️ 다음", { fontSize: "24px", backgroundColor: 0x3498db, hoverColor: 0x2980b9, padding: { x: 20, y: 10 } });
+            
+            nextBtn.on("pointerdown", () => { 
+                currentLevel++; 
+                this.cameras.main.fadeOut(300, 0, 0, 0); 
+                this.time.delayedCall(300, () => this.gameScene.scene.restart()); 
+            });
+
+            const retryBtn = createButton(this, centerX - 100, centerY + 80, "🔄 다시하기", { fontSize: "24px", backgroundColor: 0xf39c12, hoverColor: 0xe67e22, padding: { x: 20, y: 10 } });
+            retryBtn.on("pointerdown", () => { this.cameras.main.fadeOut(300, 0, 0, 0); this.time.delayedCall(300, () => this.gameScene.scene.restart()); });
+        }
+    }
+
+    new Phaser.Game({
+        type: Phaser.AUTO, parent: "game", width: 800, height: 600,
+        physics: { default: "arcade", arcade: { debug: false } },
+        scene: [PreloadScene, MainMenuScene, GameScene, UIScene],
+        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        render: { pixelArt: false }
+    });
+  </script>
+</body>
+</html>
